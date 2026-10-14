@@ -1,2 +1,2 @@
-# ECO-LEDGER
-An Decentralized carbon credit market place and the carbon emission tracking platform
+# Eco-Ledger
+Centralized Carbon credit marketplace and emission tracking

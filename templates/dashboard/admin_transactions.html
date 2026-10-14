@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    body {
+        background: url("{{ url_for('static', filename='images/admin.png') }}") no-repeat center center fixed;
+        background-size: cover;
+    }
+    .metric-card {
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(8px);
+        border: 1px solid var(--surface-border);
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    .badge-code {
+        background: #f1f5f9;
+        color: #0f172a;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 0.85em;
+        border: 1px solid #cbd5e1;
+    }
+    .table-container {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(12px);
+        border-radius: 12px;
+        border: 1px solid var(--surface-border);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        overflow-x: auto;
+    }
+    .txn-table th {
+        background: #064e3b;
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 1rem;
+        white-space: nowrap;
+    }
+    .txn-table td {
+        padding: 1rem;
+        border-bottom: 1px solid #e2e8f0;
+        color: #1e293b;
+        font-size: 0.9rem;
+    }
+    .txn-table tr:hover td {
+        background-color: #f8fafc;
+    }
+    .search-input {
+        width: 100%;
+        max-width: 400px;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #0f172a;
+        font-size: 0.95rem;
+    }
+</style>
+
+<div class="dashboard-container" style="max-width: 1400px; margin: 0 auto; width: 95%;">
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem;">
+        <div>
+            <h2><span style="color: var(--primary-color)">Master</span> Transaction Ledger</h2>
+            <p class="text-secondary mt-1">Audit trail of all carbon credit trades, corporate buyers, landowner sellers, and financial settlements.</p>
+        </div>
+        <div style="display: flex; gap: 0.8rem;">
+            <a href="{{ url_for('dashboard.index') }}" class="btn" style="width: auto; padding: 0.6rem 1.2rem; background: var(--surface-border);">← Back to Admin Dashboard</a>
+        </div>
+    </div>
+
+    <!-- Metrics Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
+        <div class="metric-card">
+            <span class="text-secondary" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Total Transactions</span>
+            <h3 style="font-size: 2.2rem; margin: 0.5rem 0 0; color: #0f172a;">{{ transactions | length }}</h3>
+            <p class="text-secondary" style="margin: 0.3rem 0 0; font-size: 0.85rem;">Lifetime completed trades</p>
+        </div>
+        <div class="metric-card">
+            <span class="text-secondary" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Credits Offset</span>
+            <h3 style="font-size: 2.2rem; margin: 0.5rem 0 0; color: var(--primary-color);">{{ "{:,.2f}".format(total_credits or 0.0) }} <span style="font-size: 1rem; font-weight: 500; color: #64748b;">tCO₂e</span></h3>
+            <p class="text-secondary" style="margin: 0.3rem 0 0; font-size: 0.85rem;">Total verified sequestration sold</p>
+        </div>
+        <div class="metric-card">
+            <span class="text-secondary" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Gross Traded Volume</span>
+            <h3 style="font-size: 2.2rem; margin: 0.5rem 0 0; color: #065f46;">₹ {{ "{:,.2f}".format(total_volume or 0.0) }}</h3>
+            <p class="text-secondary" style="margin: 0.3rem 0 0; font-size: 0.85rem;">Total financial capital disbursed</p>
+        </div>
+    </div>
+
+    <!-- Search & Filter Bar -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <input type="text" id="txnSearch" class="search-input" placeholder="🔍 Search by company, landowner, or ID..." onkeyup="filterTransactions()">
+        </div>
+        <div style="font-size: 0.9rem; color: #475569;">
+            Showing <strong id="visibleCount">{{ transactions | length }}</strong> of <strong>{{ transactions | length }}</strong> transactions
+        </div>
+    </div>
+
+    {% if transactions %}
+    <div class="table-container">
+        <table class="txn-table" id="transactionsTable" style="width: 100%; border-collapse: collapse; text-align: left;">
+            <thead>
+                <tr>
+                    <th>Txn Ref & Date</th>
+                    <th>Buyer (Company)</th>
+                    <th>Seller (Landowner)</th>
+                    <th>Credits Purchased</th>
+                    <th>Unit Price</th>
+                    <th>Total Price (INR)</th>
+                    <th>Quality / Tier</th>
+                    <th>Snapshot Balance Audit</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for txn in transactions %}
+                <tr class="txn-row">
+                    <!-- Txn ID & Timestamp -->
+                    <td style="white-space: nowrap;">
+                        <span class="badge-code" style="font-weight: 700; color: #064e3b; background: #ecfdf5; border-color: #a7f3d0;">
+                            CX-{{ '%05d' | format(txn.id) }}
+                        </span>
+                        <div style="font-size: 0.8rem; color: #64748b; margin-top: 0.3rem;">
+                            {{ txn.timestamp.strftime('%Y-%m-%d') if txn.timestamp else 'N/A' }}
+                            <span style="font-size: 0.75rem;">{{ txn.timestamp.strftime('%H:%M UTC') if txn.timestamp else '' }}</span>
+                        </div>
+                    </td>
+
+                    <!-- Buyer Details -->
+                    <td>
+                        <strong style="color: #0f172a; font-size: 0.95rem;">
+                            {{ txn.buyer.company_name if txn.buyer else 'Unknown Company' }}
+                        </strong>
+                        <div style="margin-top: 0.2rem; display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
+                            {% if txn.buyer and txn.buyer.user %}
+                                <span class="badge-code">{{ txn.buyer.user.unique_id }}</span>
+                            {% endif %}
+                            {% if txn.buyer and txn.buyer.registration_number %}
+                                <span style="font-size: 0.75rem; color: #64748b;">Reg: {{ txn.buyer.registration_number }}</span>
+                            {% endif %}
+                        </div>
+                    </td>
+
+                    <!-- Seller Details -->
+                    <td>
+                        <strong style="color: #0f172a; font-size: 0.95rem;">
+                            {{ txn.seller.full_name if txn.seller else 'Unknown Landowner' }}
+                        </strong>
+                        <div style="margin-top: 0.2rem; display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
+                            {% if txn.seller and txn.seller.user %}
+                                <span class="badge-code">{{ txn.seller.user.unique_id }}</span>
+                            {% endif %}
+                            {% if txn.seller and txn.seller.district %}
+                                <span style="font-size: 0.75rem; color: #64748b;">📍 {{ txn.seller.district }}</span>
+                            {% endif %}
+                        </div>
+                    </td>
+
+                    <!-- Credits Bought -->
+                    <td style="font-weight: 700; color: #065f46; font-size: 1rem;">
+                        {{ "{:,.2f}".format(txn.amount_purchased) }} <span style="font-size: 0.75rem; color: #64748b; font-weight: normal;">tCO₂e</span>
+                    </td>
+
+                    <!-- Price Per Unit -->
+                    <td style="color: #475569;">
+                        ₹ {{ "{:,.2f}".format(txn.price_per_unit) }}
+                    </td>
+
+                    <!-- Total Price -->
+                    <td style="font-weight: 700; color: #0f172a; font-size: 1.05rem;">
+                        ₹ {{ "{:,.2f}".format(txn.total_price) }}
+                    </td>
+
+                    <!-- Tier / Rating -->
+                    <td>
+                        {% set tier = txn.credit_tier or 'Standard' %}
+                        {% set tier_bg = 'linear-gradient(135deg, #FFD700, #DAA520)' %}
+                        {% set tier_color = '#000000' %}
+                        {% if 'Tier 2' in tier %}
+                            {% set tier_bg = 'linear-gradient(135deg, #C0C0C0, #A9A9A9)' %}
+                        {% elif 'Tier 3' in tier %}
+                            {% set tier_bg = 'linear-gradient(135deg, #CD7F32, #8B4513)' %}
+                        {% endif %}
+                        <span style="background: {{ tier_bg }}; color: {{ tier_color }}; padding: 0.25rem 0.6rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700; display: inline-block;">
+                            {{ tier }}
+                        </span>
+                        {% if txn.quality_score %}
+                            <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.2rem;">
+                                Score: {{ "%.2f"|format(txn.quality_score) }}/5.0
+                            </div>
+                        {% endif %}
+                    </td>
+
+                    <!-- Audit Trail Snapshot -->
+                    <td style="font-size: 0.8rem; line-height: 1.4;">
+                        <div style="color: #475569;">
+                            <strong>Buyer Wallet:</strong><br>
+                            ₹ {{ "{:,.0f}".format(txn.buyer_old_wallet_balance) }} → <span style="color: #065f46; font-weight: 600;">₹ {{ "{:,.0f}".format(txn.buyer_new_wallet_balance) }}</span>
+                        </div>
+                        <div style="color: #475569; margin-top: 0.3rem;">
+                            <strong>Seller Stock:</strong><br>
+                            {{ "{:,.1f}".format(txn.seller_old_credit_balance) }} → <span style="color: #065f46; font-weight: 600;">{{ "{:,.1f}".format(txn.seller_new_credit_balance) }} tCO₂e</span>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Footer Note -->
+    <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(6, 78, 59, 0.05); border-radius: 8px; border: 1px solid rgba(6, 78, 59, 0.15); font-size: 0.85rem; color: #475569; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <span>🔒 <strong>Immutable Financial Record:</strong> Every trade records before-and-after cryptographic balance snapshots for total regulatory compliance.</span>
+        <span>Generated by Eco-Ledger Admin Console</span>
+    </div>
+
+    {% else %}
+    <div class="card" style="text-align: center; padding: 3rem;">
+        <div style="font-size: 3rem; margin-bottom: 1rem;">📜</div>
+        <h3>No Transactions Recorded Yet</h3>
+        <p class="text-secondary" style="margin-top: 0.5rem;">When companies purchase verified credits from landowners in the marketplace, the trades will immediately appear in this central audit ledger.</p>
+        <a href="{{ url_for('dashboard.index') }}" class="btn" style="max-width: 220px; margin: 1.5rem auto 0;">Return to Dashboard</a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function filterTransactions() {
+    const input = document.getElementById('txnSearch').value.toLowerCase();
+    const rows = document.querySelectorAll('.txn-row');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        if (text.includes(input)) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    document.getElementById('visibleCount').innerText = visibleCount;
+}
+</script>
+{% endblock %}
